@@ -17,6 +17,7 @@ import (
 	"golang.org/x/exp/shiny/widget"
 	"golang.org/x/exp/shiny/widget/node"
 	"golang.org/x/exp/shiny/widget/theme"
+	"golang.org/x/mobile/event/lifecycle"
 
 	"image/color"
 	_ "image/gif"
@@ -138,6 +139,28 @@ func makeList(dir string) node.Node {
 	return widget.NewFlow(widget.AxisVertical, children...)
 }
 
+type myRoot struct {
+	*widget.Sheet
+}
+
+func (r *myRoot) Measure(t *theme.Theme, widthHint, heightHint int) {
+	log.Printf("root: Measure: DPI=%f, WxH=%dx%d\n", t.DPI, widthHint, heightHint)
+	r.Sheet.Measure(t, widthHint, heightHint)
+}
+func (r *myRoot) Paint(ctx *node.PaintContext, origin image.Point) error {
+	log.Printf("root: Paint: DPI=%f, screen=%v, drawer=%v, origin=%s\n", ctx.Theme.DPI, ctx.Screen, ctx.Drawer, origin)
+	return r.Sheet.Paint(ctx, origin)
+}
+func (r *myRoot) OnLifecycleEvent(e lifecycle.Event) {
+	log.Printf("root: OnLifecycleEvent: %s\n", e)
+	r.Sheet.OnLifecycleEvent(e)
+}
+
+func (r *myRoot) OnInputEvent(e interface{}, origin image.Point) node.EventHandled {
+	log.Printf("root: OnInputEvent: event=%s, origin=%s\n", e, origin)
+	return r.Sheet.OnInputEvent(e, origin)
+}
+
 func loadUI(dir string) {
 	driver.Main(func(s screen.Screen) {
 		list := makeList(dir)
@@ -160,6 +183,7 @@ func loadUI(dir string) {
 			makeBar(),
 			expanding)
 		sheet := widget.NewSheet(widget.NewUniform(theme.Dark, container))
+		mySheet := &myRoot{sheet}
 
 		if len(images) > 0 {
 			chooseImage(0)
@@ -175,7 +199,7 @@ func loadUI(dir string) {
 			theme.Background: image.Uniform{C: color.RGBA{0xff, 0xff, 0xff, 0xff}}, // Material Design "White".
 		}
 		container.Measure(&th, 0, 0)
-		if err := widget.RunWindow(s, sheet, &widget.RunWindowOptions{
+		if err := widget.RunWindow(s, mySheet, &widget.RunWindowOptions{
 			NewWindowOptions: screen.NewWindowOptions{
 				Title:  "GoImages",
 				Width:  container.MeasuredSize.X,
