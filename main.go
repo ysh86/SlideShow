@@ -18,6 +18,7 @@ import (
 	"golang.org/x/exp/shiny/widget/node"
 	"golang.org/x/exp/shiny/widget/theme"
 
+	"image/color"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -158,19 +159,29 @@ func loadUI(dir string) {
 		container := widget.NewFlow(widget.AxisVertical,
 			makeBar(),
 			expanding)
-		sheet := widget.NewSheet(widget.NewUniform(theme.Background, container))
+		sheet := widget.NewSheet(widget.NewUniform(theme.Dark, container))
 
 		if len(images) > 0 {
 			chooseImage(0)
 		}
 
-		container.Measure(theme.Default, 0, 0)
+		var th theme.Theme
+		th.Palette = &theme.Palette{
+			theme.Light:      image.Uniform{C: color.RGBA{0xf5, 0xf5, 0xf5, 0xff}}, // Material Design "Grey 100".
+			theme.Neutral:    image.Uniform{C: color.RGBA{0xee, 0xee, 0xee, 0xff}}, // Material Design "Grey 200".
+			theme.Dark:       image.Uniform{C: color.RGBA{0xe0, 0xe0, 0xe0, 0xff}}, // Material Design "Grey 300".
+			theme.Accent:     image.Uniform{C: color.RGBA{0x21, 0x96, 0xf3, 0xff}}, // Material Design "Blue 500".
+			theme.Foreground: image.Uniform{C: color.RGBA{0x00, 0x00, 0x00, 0xff}}, // Material Design "Black".
+			theme.Background: image.Uniform{C: color.RGBA{0xff, 0xff, 0xff, 0xff}}, // Material Design "White".
+		}
+		container.Measure(&th, 0, 0)
 		if err := widget.RunWindow(s, sheet, &widget.RunWindowOptions{
 			NewWindowOptions: screen.NewWindowOptions{
 				Title:  "GoImages",
 				Width:  container.MeasuredSize.X,
 				Height: container.MeasuredSize.Y,
 			},
+			Theme: th,
 		}); err != nil {
 			log.Fatal(err)
 		}
