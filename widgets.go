@@ -6,6 +6,8 @@ import (
 	"math"
 
 	"golang.org/x/exp/shiny/gesture"
+	"golang.org/x/exp/shiny/iconvg"
+	"golang.org/x/exp/shiny/materialdesign/icons"
 	"golang.org/x/exp/shiny/widget/node"
 	"golang.org/x/exp/shiny/widget/theme"
 	"golang.org/x/image/draw"
@@ -13,26 +15,30 @@ import (
 	"golang.org/x/image/math/fixed"
 )
 
-func scaleImage(src image.Image, width, height int) image.Image {
-	ret := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	draw.ApproxBiLinear.Scale(ret, ret.Bounds(), src, src.Bounds(), draw.Src, nil)
-
-	return ret
-}
-
-const buttonPad = 12
+const pad = 12
 const iconSize = 32
+
+func loadDirIcon() image.Image {
+	bounds := image.Rect(0, 0, iconSize, iconSize)
+	icon := image.NewRGBA(bounds)
+
+	var raster iconvg.Rasterizer
+	raster.SetDstImage(icon, bounds, draw.Over)
+	iconvg.Decode(&raster, icons.FileFolder, nil)
+
+	return icon
+}
 
 type button struct {
 	node.LeafEmbed
 
+	pad     int
 	label   string
 	onClick func()
 }
 
 func newButton(label string, onClick func()) *button {
-	b := &button{label: label, onClick: onClick}
+	b := &button{pad: pad, label: label, onClick: onClick}
 	b.Wrapper = b
 
 	return b
@@ -42,8 +48,8 @@ func (b *button) Measure(t *theme.Theme, widthHint, heightHint int) {
 	face := t.AcquireFontFace(theme.FontFaceOptions{})
 	defer t.ReleaseFontFace(theme.FontFaceOptions{}, face)
 
-	b.MeasuredSize.X = font.MeasureString(face, b.label).Ceil() + 2*buttonPad
-	b.MeasuredSize.Y = face.Metrics().Ascent.Ceil() + face.Metrics().Descent.Ceil() + 2*buttonPad
+	b.MeasuredSize.X = font.MeasureString(face, b.label).Ceil() + 2*b.pad
+	b.MeasuredSize.Y = face.Metrics().Ascent.Ceil() + face.Metrics().Descent.Ceil() + 2*b.pad
 }
 
 func (b *button) PaintBase(ctx *node.PaintBaseContext, origin image.Point) error {
@@ -56,7 +62,7 @@ func (b *button) PaintBase(ctx *node.PaintBaseContext, origin image.Point) error
 		Dst:  ctx.Dst,
 		Src:  theme.Background.Uniform(ctx.Theme),
 		Face: face,
-		Dot:  fixed.Point26_6{X: fixed.I(b.Rect.Min.X + buttonPad), Y: fixed.I(b.Rect.Min.Y + face.Metrics().Ascent.Ceil() + buttonPad)},
+		Dot:  fixed.Point26_6{X: fixed.I(b.Rect.Min.X + b.pad), Y: fixed.I(b.Rect.Min.Y + face.Metrics().Ascent.Ceil() + b.pad)},
 	}
 	d.DrawString(b.label)
 
@@ -78,14 +84,17 @@ func (b *button) OnInputEvent(e interface{}, origin image.Point) node.EventHandl
 type cell struct {
 	node.LeafEmbed
 
-	icon    *scaledImage
-	label   string
-	onClick func()
+	pad      int
+	icon     *scaledImage
+	iconSize int
+	space    int
+	label    string
+	onClick  func()
 }
 
-func newCell(icon image.Image, label string, onClick func()) *cell {
-	img := newScaledImage(icon)
-	c := &cell{label: label, icon: img, onClick: onClick}
+func newCell(icon image.Image, space int, label string, onClick func()) *cell {
+	scaledIcon := newScaledImage(icon)
+	c := &cell{pad: pad, icon: scaledIcon, iconSize: iconSize, space: space, label: label, onClick: onClick}
 	c.Wrapper = c
 
 	return c
@@ -95,8 +104,8 @@ func (c *cell) Measure(t *theme.Theme, widthHint, heightHint int) {
 	face := t.AcquireFontFace(theme.FontFaceOptions{})
 	defer t.ReleaseFontFace(theme.FontFaceOptions{}, face)
 
-	c.MeasuredSize.X = iconSize + space + font.MeasureString(face, c.label).Ceil() + 2*buttonPad
-	c.MeasuredSize.Y = face.Metrics().Ascent.Ceil() + face.Metrics().Descent.Ceil() + 2*buttonPad
+	c.MeasuredSize.X = c.iconSize + c.space + font.MeasureString(face, c.label).Ceil() + 2*c.pad
+	c.MeasuredSize.Y = face.Metrics().Ascent.Ceil() + face.Metrics().Descent.Ceil() + 2*c.pad
 }
 
 func (c *cell) PaintBase(ctx *node.PaintBaseContext, origin image.Point) error {
@@ -110,7 +119,7 @@ func (c *cell) PaintBase(ctx *node.PaintBaseContext, origin image.Point) error {
 		if img.Bounds().Max.Y > img.Bounds().Max.X {
 			ratio = float32(img.Bounds().Max.X) / float32(img.Bounds().Max.Y)
 		}
-		scaled := scaleImage(img, iconSize, int(float32(iconSize)*ratio))
+		scaled := scaleImage(img, c.iconSize, int(float32(c.iconSize)*ratio))
 		draw.Draw(ctx.Dst, c.Rect.Add(origin), scaled, image.Point{}, draw.Over)
 	}
 
@@ -118,7 +127,7 @@ func (c *cell) PaintBase(ctx *node.PaintBaseContext, origin image.Point) error {
 		Dst:  ctx.Dst,
 		Src:  theme.Foreground.Uniform(ctx.Theme),
 		Face: face,
-		Dot: fixed.Point26_6{X: fixed.I(c.Rect.Min.X + origin.X + iconSize + space),
+		Dot: fixed.Point26_6{X: fixed.I(c.Rect.Min.X + origin.X + c.iconSize + c.space),
 			Y: fixed.I(c.Rect.Min.Y + origin.Y + face.Metrics().Ascent.Ceil())},
 	}
 	d.DrawString(c.label)
@@ -191,6 +200,14 @@ func (w *scaledImage) SetImage(img image.Image) {
 	w.Mark(node.MarkNeedsPaintBase)
 
 	refresh(w)
+}
+
+func scaleImage(src image.Image, width, height int) image.Image {
+	ret := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	draw.ApproxBiLinear.Scale(ret, ret.Bounds(), src, src.Bounds(), draw.Src, nil)
+
+	return ret
 }
 
 var checkers = &checkerImage{}

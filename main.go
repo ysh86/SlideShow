@@ -12,14 +12,11 @@ import (
 	"strings"
 
 	"golang.org/x/exp/shiny/driver"
-	"golang.org/x/exp/shiny/iconvg"
-	"golang.org/x/exp/shiny/materialdesign/icons"
 	"golang.org/x/exp/shiny/screen"
 	"golang.org/x/exp/shiny/unit"
 	"golang.org/x/exp/shiny/widget"
 	"golang.org/x/exp/shiny/widget/node"
 	"golang.org/x/exp/shiny/widget/theme"
-	"golang.org/x/image/draw"
 
 	_ "image/gif"
 	_ "image/jpeg"
@@ -78,23 +75,17 @@ func makeBar() node.Node {
 	next := newButton("Next", nextImage)
 	gname = widget.NewLabel("Filename")
 
-	flow := widget.NewFlow(widget.AxisHorizontal, prev, expandSpace(),
-		widget.NewPadder(widget.AxisBoth, padSize, gname), expandSpace(), next)
+	flow := widget.NewFlow(widget.AxisHorizontal,
+		prev,
+		expandSpace(),
+		widget.NewPadder(widget.AxisBoth, padSize, gname),
+		expandSpace(),
+		next)
 
 	bar := widget.NewUniform(theme.Neutral, flow)
 
 	return widget.WithLayoutData(bar,
 		widget.FlowLayoutData{ExpandAlong: true, ExpandAcross: true})
-}
-
-func loadDirIcon() image.Image {
-	var raster iconvg.Rasterizer
-	bounds := image.Rect(0, 0, iconSize, iconSize)
-	icon := image.NewRGBA(bounds)
-	raster.SetDstImage(icon, bounds, draw.Over)
-
-	iconvg.Decode(&raster, icons.FileFolder, nil)
-	return icon
 }
 
 func makeCell(idx int, name string) *cell {
@@ -106,7 +97,7 @@ func makeCell(idx int, name string) *cell {
 		onClick = func() { chooseImage(idx) }
 	}
 
-	return newCell(icon, name, onClick)
+	return newCell(icon, space, name, onClick)
 }
 
 func makeList(dir string) node.Node {
