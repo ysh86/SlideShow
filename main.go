@@ -1,14 +1,25 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image"
+	"io/ioutil"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
+	"strings"
 
 	"golang.org/x/exp/shiny/driver"
+	"golang.org/x/exp/shiny/iconvg"
+	"golang.org/x/exp/shiny/materialdesign/icons"
 	"golang.org/x/exp/shiny/screen"
+	"golang.org/x/exp/shiny/unit"
 	"golang.org/x/exp/shiny/widget"
+	"golang.org/x/exp/shiny/widget/node"
+	"golang.org/x/exp/shiny/widget/theme"
+	"golang.org/x/image/draw"
 
 	_ "image/gif"
 	_ "image/jpeg"
@@ -19,42 +30,183 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-func decode(filename string) (image.Image, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
+const space = 10
+
+var padSize = unit.DIPs(space * 2)
+var spaceSize = unit.DIPs(space)
+
+var index = 0
+var gmainView *scaledImage
+var gname *widget.Label
+var images []*AsyncImage
+var names []string
+
+func changeImage(offset int) {
+	newidx := index + offset
+	if newidx < 0 || newidx >= len(images) {
+		return
 	}
-	defer f.Close()
-	m, _, err := image.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("could not decode %s: %v", filename, err)
-	}
-	return m, nil
+
+	chooseImage(newidx)
 }
 
-func main() {
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
-	log.Println("Start")
+func previousImage() {
+	changeImage(-1)
+}
 
+func nextImage() {
+	changeImage(1)
+}
+
+func chooseImage(idx int) {
+	index = idx
+	gmainView.SetImage(images[idx])
+
+	gname.Text = names[idx]
+	gname.Mark(node.MarkNeedsMeasureLayout)
+	gname.Mark(node.MarkNeedsPaintBase)
+	refresh(gname)
+}
+
+func expandSpace() node.Node {
+	return widget.WithLayoutData(widget.NewSpace(),
+		widget.FlowLayoutData{ExpandAlong: true, ExpandAcross: true, AlongWeight: 1})
+}
+
+func makeBar() node.Node {
+	prev := newButton("Previous", previousImage)
+	next := newButton("Next", nextImage)
+	gname = widget.NewLabel("Filename")
+
+	flow := widget.NewFlow(widget.AxisHorizontal, prev, expandSpace(),
+		widget.NewPadder(widget.AxisBoth, padSize, gname), expandSpace(), next)
+
+	bar := widget.NewUniform(theme.Neutral, flow)
+
+	return widget.WithLayoutData(bar,
+		widget.FlowLayoutData{ExpandAlong: true, ExpandAcross: true})
+}
+
+func loadDirIcon() image.Image {
+	var raster iconvg.Rasterizer
+	bounds := image.Rect(0, 0, iconSize, iconSize)
+	icon := image.NewRGBA(bounds)
+	raster.SetDstImage(icon, bounds, draw.Over)
+
+	iconvg.Decode(&raster, icons.FileFolder, nil)
+	return icon
+}
+
+func makeCell(idx int, name string) *cell {
+	var onClick func()
+	var icon image.Image
+	if idx < 0 {
+		icon = loadDirIcon()
+	} else {
+		onClick = func() { chooseImage(idx) }
+	}
+
+	return newCell(icon, name, onClick)
+}
+
+func makeList(dir string) node.Node {
+	var fileNames []string
+	fileInfos, _ := ioutil.ReadDir(dir)
+	for _, info := range fileInfos {
+		if info.IsDir() {
+			continue
+		}
+
+		ext := strings.ToLower(filepath.Ext(info.Name()))
+		if ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".gif" ||
+			ext == ".bmp" || ext == ".tiff" || ext == ".webp" {
+			fileNames = append(fileNames, info.Name())
+		}
+	}
+
+	parent := makeCell(-1, filepath.Base(dir))
+	children := []node.Node{parent}
+
+	for idx, name := range fileNames {
+		cell := makeCell(idx, name)
+		i := idx
+		aimg := NewAsyncImage(path.Join(dir, name), func(path string, img image.Image) {
+			log.Printf("loaded: %d: %s\n", i, path)
+			cell.icon.SetImage(img)
+			if i == index {
+				gmainView.SetImage(img)
+			}
+		})
+		children = append(children, cell)
+
+		images = append(images, aimg)
+		names = append(names, name)
+	}
+
+	return widget.NewFlow(widget.AxisVertical, children...)
+}
+
+func loadUI(dir string) {
 	driver.Main(func(s screen.Screen) {
-		if len(os.Args) < 2 {
-			log.Fatal("no image file specified")
+		list := makeList(dir)
+
+		var img image.Image
+		gmainView = newScaledImage(img)
+		scaledImage := widget.WithLayoutData(
+			gmainView,
+			widget.FlowLayoutData{ExpandAlong: true, ExpandAcross: true, AlongWeight: 4})
+
+		body := widget.NewFlow(widget.AxisHorizontal,
+			list,
+			widget.NewPadder(widget.AxisHorizontal, spaceSize, nil),
+			scaledImage)
+		expanding := widget.WithLayoutData(
+			widget.NewPadder(widget.AxisBoth, padSize, body),
+			widget.FlowLayoutData{ExpandAlong: true, ExpandAcross: true, AlongWeight: 4})
+
+		container := widget.NewFlow(widget.AxisVertical,
+			makeBar(),
+			expanding)
+		sheet := widget.NewSheet(widget.NewUniform(theme.Background, container))
+
+		if len(images) > 0 {
+			chooseImage(0)
 		}
-		src, err := decode(os.Args[1])
-		if err != nil {
-			log.Fatal(err)
-		}
-		w := widget.NewSheet(widget.NewImage(src, src.Bounds()))
-		log.Printf("Window: %dx%d\n", src.Bounds().Dx(), src.Bounds().Dy())
-		if err := widget.RunWindow(s, w, &widget.RunWindowOptions{
+
+		container.Measure(theme.Default, 0, 0)
+		if err := widget.RunWindow(s, sheet, &widget.RunWindowOptions{
 			NewWindowOptions: screen.NewWindowOptions{
-				Width:  src.Bounds().Dx(),
-				Height: src.Bounds().Dy(),
-				Title:  "ImageView Shiny Example",
+				Title:  "GoImages",
+				Width:  container.MeasuredSize.X,
+				Height: container.MeasuredSize.Y,
 			},
 		}); err != nil {
 			log.Fatal(err)
 		}
 	})
+}
 
+func main() {
+	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
+
+	flag.Usage = func() {
+		fmt.Fprintln(os.Stderr, "goimages takes a single, optional, directory parameter")
+	}
+	flag.Parse()
+
+	dir, _ := os.Getwd()
+	if len(flag.Args()) > 1 {
+		flag.Usage()
+		os.Exit(2)
+	} else if len(flag.Args()) == 1 {
+		dir = flag.Args()[0]
+
+		if _, err := ioutil.ReadDir(dir); os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "Directory", dir, "does not exist or could not be read")
+			os.Exit(1)
+		}
+	}
+
+	log.Printf("start: %s\n", dir)
+	loadUI(dir)
 }
