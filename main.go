@@ -3,12 +3,16 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/draw"
 	"log"
-	"os"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
-	"golang.org/x/exp/shiny/widget"
+	"golang.org/x/exp/shiny/unit"
+	"golang.org/x/mobile/event/key"
+	"golang.org/x/mobile/event/lifecycle"
+	"golang.org/x/mobile/event/paint"
+	"golang.org/x/mobile/event/size"
 
 	_ "image/gif"
 	_ "image/jpeg"
@@ -19,24 +23,11 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-func decode(filename string) (image.Image, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	m, _, err := image.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("could not decode %s: %v", filename, err)
-	}
-	return m, nil
-}
-
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 	log.Println("Start")
 
-	driver.Main(func(s screen.Screen) {
+	/*
 		if len(os.Args) < 2 {
 			log.Fatal("no image file specified")
 		}
@@ -44,16 +35,77 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		w := widget.NewSheet(widget.NewImage(src, src.Bounds()))
-		log.Printf("Window: %dx%d\n", src.Bounds().Dx(), src.Bounds().Dy())
-		if err := widget.RunWindow(s, w, &widget.RunWindowOptions{
-			NewWindowOptions: screen.NewWindowOptions{
-				Width:  src.Bounds().Dx(),
-				Height: src.Bounds().Dy(),
-				Title:  "ImageView Shiny Example",
-			},
-		}); err != nil {
+	*/
+	src := []image.Image{
+		Checker.Gen(1280, 720, 16),
+		Checker.Gen(1280, 720, 8),
+	}
+
+	idx := 0
+	driver.Main(func(s screen.Screen) {
+		w, err := s.NewWindow(&screen.NewWindowOptions{
+			Title:  "Image viewer",
+			Width:  src[idx].Bounds().Dx(), // / 2, // TODO: HiDPI
+			Height: src[idx].Bounds().Dy(), // / 2, // TODO: HiDPI
+		})
+		if err != nil {
 			log.Fatal(err)
+		}
+		defer w.Release()
+
+		srcSize := image.Pt(src[idx].Bounds().Dx(), src[idx].Bounds().Dy())
+		buf, err := s.NewBuffer(srcSize)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer buf.Release()
+
+		draw.Draw(buf.RGBA(), buf.Bounds(), src[idx], src[idx].Bounds().Min, draw.Src)
+
+		tex, err := s.NewTexture(srcSize)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer tex.Release()
+
+		tex.Upload(image.Point{}, buf, buf.Bounds())
+
+		var sz size.Event
+		for {
+			e := w.NextEvent()
+
+			// This print message is to help programmers learn what events this
+			// example program generates. A real program shouldn't print such
+			// messages; they're not important to end users.
+			format := "got %#v\n"
+			if _, ok := e.(fmt.Stringer); ok {
+				format = "got %v\n"
+			}
+			log.Printf(format, e)
+
+			switch e := e.(type) {
+			case lifecycle.Event:
+				if e.To == lifecycle.StageDead {
+					return
+				}
+
+			case key.Event:
+				if e.Code == key.CodeEscape {
+					return
+				}
+
+			case paint.Event:
+				w.Copy(image.Point{}, tex, tex.Bounds(), screen.Src, nil)
+				w.Publish()
+
+			case size.Event:
+				sz = e
+				log.Printf("size: %#v, PointsPerInch: %#v\n", sz, unit.PointsPerInch)
+				w.Send(paint.Event{})
+
+			case error:
+				log.Print(e)
+			}
 		}
 	})
 
