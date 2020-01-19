@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/draw"
+	"image/color"
 	"log"
 
 	"golang.org/x/exp/shiny/driver"
@@ -23,10 +24,17 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
+// Default window size
+const (
+	WinWidth = 1920
+	WinHeight = 1280
+)
+
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 	log.Println("Start")
 
+	// images
 	/*
 		if len(os.Args) < 2 {
 			log.Fatal("no image file specified")
@@ -38,37 +46,38 @@ func main() {
 	*/
 	src := []image.Image{
 		Checker.Gen(1280, 720, 16),
-		Checker.Gen(1280, 720, 8),
+		Checker.Gen(720, 1280, 16),
 	}
+	idx := 1
 
-	idx := 0
 	driver.Main(func(s screen.Screen) {
 		w, err := s.NewWindow(&screen.NewWindowOptions{
 			Title:  "Image viewer",
-			Width:  src[idx].Bounds().Dx(), // / 2, // TODO: HiDPI
-			Height: src[idx].Bounds().Dy(), // / 2, // TODO: HiDPI
+			Width:  WinWidth, // / 2, // TODO: HiDPI
+			Height: WinHeight, // / 2, // TODO: HiDPI
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer w.Release()
 
-		srcSize := image.Pt(src[idx].Bounds().Dx(), src[idx].Bounds().Dy())
-		buf, err := s.NewBuffer(srcSize)
+		canvasSize := image.Pt(WinWidth, WinHeight)
+		canvas, err := s.NewBuffer(canvasSize)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer buf.Release()
+		defer canvas.Release()
 
-		draw.Draw(buf.RGBA(), buf.Bounds(), src[idx], src[idx].Bounds().Min, draw.Src)
-
-		tex, err := s.NewTexture(srcSize)
+		tex, err := s.NewTexture(canvasSize)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer tex.Release()
 
-		tex.Upload(image.Point{}, buf, buf.Bounds())
+		draw.Draw(canvas.RGBA(), canvas.Bounds(), &image.Uniform{color.Gray{32}}, image.Point{}, draw.Src)
+		// TODO: resize & centoring
+		draw.Draw(canvas.RGBA(), canvas.Bounds(), src[idx], src[idx].Bounds().Min, draw.Src)
+		tex.Upload(image.Point{}, canvas, canvas.Bounds())
 
 		var sz size.Event
 		for {
