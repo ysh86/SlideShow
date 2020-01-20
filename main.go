@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"image"
-	"image/draw"
 	"image/color"
 	"log"
 
@@ -14,70 +13,58 @@ import (
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
 	"golang.org/x/mobile/event/size"
-
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
-
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
 )
 
 // Default window size
 const (
-	WinWidth = 1920
-	WinHeight = 1280
+	winWidth  = 1920
+	winHeight = 1280
 )
+
+// UI colors
+var backGroundColor = color.Gray{32}
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
-	log.Println("Start")
 
-	// images
-	/*
-		if len(os.Args) < 2 {
-			log.Fatal("no image file specified")
-		}
-		src, err := decode(os.Args[1])
-		if err != nil {
-			log.Fatal(err)
-		}
-	*/
-	src := []image.Image{
-		Checker.Gen(1280, 720, 16),
-		Checker.Gen(720, 1280, 16),
+	// src images
+	loader, err := NewAsyncLoader()
+	if err != nil {
+		log.Fatal(err)
 	}
-	idx := 1
+	loader.SetList()
+	log.Println("Start loader")
 
+	// renderer
+	renderer, err := NewNoEffectRenderer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Start renderer")
+
+	// UI loop
 	driver.Main(func(s screen.Screen) {
 		w, err := s.NewWindow(&screen.NewWindowOptions{
 			Title:  "Image viewer",
-			Width:  WinWidth, // / 2, // TODO: HiDPI
-			Height: WinHeight, // / 2, // TODO: HiDPI
+			Width:  winWidth,  // / 2, // TODO: HiDPI
+			Height: winHeight, // / 2, // TODO: HiDPI
 		})
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer w.Release()
 
-		canvasSize := image.Pt(WinWidth, WinHeight)
-		canvas, err := s.NewBuffer(canvasSize)
+		// start loader
+		done := make(chan struct{})
+		loader.Run(w, done)
+		defer func() { close(done); log.Println("Done loader") }()
+
+		// init renderer
+		err = renderer.Init(s, image.Pt(winWidth, winHeight), backGroundColor)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer canvas.Release()
-
-		tex, err := s.NewTexture(canvasSize)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer tex.Release()
-
-		draw.Draw(canvas.RGBA(), canvas.Bounds(), &image.Uniform{color.Gray{32}}, image.Point{}, draw.Src)
-		// TODO: resize & centoring
-		draw.Draw(canvas.RGBA(), canvas.Bounds(), src[idx], src[idx].Bounds().Min, draw.Src)
-		tex.Upload(image.Point{}, canvas, canvas.Bounds())
+		defer func() { renderer.Release(); log.Println("Done renderer") }()
 
 		var sz size.Event
 		for {
@@ -104,12 +91,18 @@ func main() {
 				}
 
 			case paint.Event:
-				w.Copy(image.Point{}, tex, tex.Bounds(), screen.Src, nil)
-				w.Publish()
+				select {
+				case cur := <-loader.cur:
+					renderer.Render(cur)
+				default:
+					// nothing to do
+				}
+				renderer.Swap(w)
 
 			case size.Event:
 				sz = e
 				log.Printf("size: %#v, PointsPerInch: %#v\n", sz, unit.PointsPerInch)
+				// TODO: resize canvas in renderer
 				w.Send(paint.Event{})
 
 			case error:
