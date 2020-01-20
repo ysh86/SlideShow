@@ -1,4 +1,4 @@
-module private/shiny
+module github.com/ysh86/SlideShow
 
 go 1.13
 
