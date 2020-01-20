@@ -3,57 +3,111 @@ package main
 import (
 	"fmt"
 	"image"
+	"image/color"
 	"log"
-	"os"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
-	"golang.org/x/exp/shiny/widget"
-
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
-
-	_ "golang.org/x/image/bmp"
-	_ "golang.org/x/image/tiff"
-	_ "golang.org/x/image/webp"
+	"golang.org/x/exp/shiny/unit"
+	"golang.org/x/mobile/event/key"
+	"golang.org/x/mobile/event/lifecycle"
+	"golang.org/x/mobile/event/paint"
+	"golang.org/x/mobile/event/size"
 )
 
-func decode(filename string) (image.Image, error) {
-	f, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	m, _, err := image.Decode(f)
-	if err != nil {
-		return nil, fmt.Errorf("could not decode %s: %v", filename, err)
-	}
-	return m, nil
-}
+// Default window size
+const (
+	winWidth  = 1920
+	winHeight = 1280
+)
+
+// UI colors
+var backGroundColor = color.Gray{32}
 
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
-	log.Println("Start")
 
+	// src images
+	loader, err := NewAsyncLoader()
+	if err != nil {
+		log.Fatal(err)
+	}
+	loader.SetList()
+	log.Println("Start loader")
+
+	// renderer
+	renderer, err := NewNoEffectRenderer()
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Println("Start renderer")
+
+	// UI loop
 	driver.Main(func(s screen.Screen) {
-		if len(os.Args) < 2 {
-			log.Fatal("no image file specified")
-		}
-		src, err := decode(os.Args[1])
+		w, err := s.NewWindow(&screen.NewWindowOptions{
+			Title:  "Image viewer",
+			Width:  winWidth,  // / 2, // TODO: HiDPI
+			Height: winHeight, // / 2, // TODO: HiDPI
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
-		w := widget.NewSheet(widget.NewImage(src, src.Bounds()))
-		log.Printf("Window: %dx%d\n", src.Bounds().Dx(), src.Bounds().Dy())
-		if err := widget.RunWindow(s, w, &widget.RunWindowOptions{
-			NewWindowOptions: screen.NewWindowOptions{
-				Width:  src.Bounds().Dx(),
-				Height: src.Bounds().Dy(),
-				Title:  "ImageView Shiny Example",
-			},
-		}); err != nil {
+		defer w.Release()
+
+		// start loader
+		done := make(chan struct{})
+		loader.Run(w, done)
+		defer func() { close(done); log.Println("Done loader") }()
+
+		// init renderer
+		err = renderer.Init(s, image.Pt(winWidth, winHeight), backGroundColor)
+		if err != nil {
 			log.Fatal(err)
+		}
+		defer func() { renderer.Release(); log.Println("Done renderer") }()
+
+		var sz size.Event
+		for {
+			e := w.NextEvent()
+
+			// This print message is to help programmers learn what events this
+			// example program generates. A real program shouldn't print such
+			// messages; they're not important to end users.
+			format := "got %#v\n"
+			if _, ok := e.(fmt.Stringer); ok {
+				format = "got %v\n"
+			}
+			log.Printf(format, e)
+
+			switch e := e.(type) {
+			case lifecycle.Event:
+				if e.To == lifecycle.StageDead {
+					return
+				}
+
+			case key.Event:
+				if e.Code == key.CodeEscape {
+					return
+				}
+
+			case paint.Event:
+				select {
+				case cur := <-loader.cur:
+					renderer.Render(cur)
+				default:
+					// nothing to do
+				}
+				renderer.Swap(w)
+
+			case size.Event:
+				sz = e
+				log.Printf("size: %#v, PointsPerInch: %#v\n", sz, unit.PointsPerInch)
+				// TODO: resize canvas in renderer
+				w.Send(paint.Event{})
+
+			case error:
+				log.Print(e)
+			}
 		}
 	})
 
