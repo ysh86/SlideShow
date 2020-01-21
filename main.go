@@ -55,8 +55,8 @@ func main() {
 		defer w.Release()
 
 		// start loader
-		done := make(chan struct{})
-		loader.Run(w, done)
+		done := make(chan interface{})
+		loader.Run(done, w)
 		defer func() { close(done); log.Println("Done loader") }()
 
 		// init renderer
@@ -92,8 +92,14 @@ func main() {
 
 			case paint.Event:
 				select {
-				case cur := <-loader.cur:
-					renderer.Render(cur)
+				case cur, ok := <-loader.cur:
+					if ok {
+						renderer.Render(cur)
+					} else {
+						// EOF
+						renderer.Render(nil)
+						log.Println("paint EOF")
+					}
 				default:
 					// nothing to do
 				}
