@@ -28,15 +28,8 @@ func NewAsyncLoader() (*asyncLoader, error) {
 	return &asyncLoader{cur: cur}, nil
 }
 
-func (l *asyncLoader) SetList() {
-	l.src = []string{
-		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
-		"0",
-		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
-		"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
-		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
-		"1",
-	}
+func (l *asyncLoader) SetList(src []string) {
+	l.src = src
 }
 
 func urlAsync(url string) <-chan image.Image {

@@ -71,7 +71,13 @@ func (r *noEffect) Render(src image.Image) {
 		}
 
 		// resize!
-		draw.NearestNeighbor.Scale(r.canvas.RGBA(), image.Rectangle{dstMin, dstMax}, src, src.Bounds(), draw.Src, nil)
+		//draw.NearestNeighbor.Scale(
+		draw.CatmullRom.Scale(
+			r.canvas.RGBA(),
+			image.Rectangle{dstMin, dstMax},
+			src,
+			src.Bounds(),
+			draw.Src, nil)
 	}
 
 	r.tex.Upload(image.Point{}, r.canvas, r.canvas.Bounds())

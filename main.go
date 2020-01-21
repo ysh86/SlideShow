@@ -27,12 +27,22 @@ var backGroundColor = color.Gray{32}
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
+	// feed
+	src := []string{
+		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+		"0",
+		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
+		"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
+		"1",
+	}
+
 	// src images
 	loader, err := NewAsyncLoader()
 	if err != nil {
 		log.Fatal(err)
 	}
-	loader.SetList()
+	loader.SetList(src)
 	log.Println("Start loader")
 
 	// renderer
