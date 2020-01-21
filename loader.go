@@ -2,7 +2,7 @@ package main
 
 import (
 	"image"
-	"image/color"
+	"net/http"
 	"time"
 
 	"golang.org/x/exp/shiny/screen"
@@ -20,7 +20,7 @@ import (
 type asyncLoader struct {
 	cur chan image.Image
 
-	src []image.Image
+	src []string
 }
 
 func NewAsyncLoader() (*asyncLoader, error) {
@@ -29,53 +29,70 @@ func NewAsyncLoader() (*asyncLoader, error) {
 }
 
 func (l *asyncLoader) SetList() {
-	/*
-		if len(os.Args) < 2 {
-			log.Fatal("no image file specified")
-		}
-		src, err := decode(os.Args[1])
-		if err != nil {
-			log.Fatal(err)
-		}
-	*/
-	l.src = []image.Image{
-		Checker.Gen(1280, 720, 16*5),
-		nil, // URL0
-		Checker.Gen(720, 1280, 16*5),
-		nil, // URL1
-		Checker.Gen(720, 720, 16*5),
-		nil, // URL2
-		nil, // URL3
-		nil, // URL4
-		nil, // URL5
+	l.src = []string{
+		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+		"0",
+		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
+		"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
+		"1",
 	}
 }
 
-func loadAsync(done <-chan interface{}, src []image.Image) <-chan (<-chan image.Image) {
+func urlAsync(url string) <-chan image.Image {
+	ch := make(chan image.Image, 1)
+
+	go func() {
+		defer close(ch)
+
+		// debug
+		if url == "0" {
+			ch <- Checker.Gen(1280, 720, 16*5)
+			return
+		}
+		if url == "1" {
+			ch <- Checker.Gen(720, 1280, 16*5)
+			return
+		}
+
+		resp, err := http.Get(url)
+		if err != nil {
+			return
+		}
+		defer resp.Body.Close()
+
+		pic, _, err := image.Decode(resp.Body)
+		if err != nil {
+			return
+		}
+
+		ch <- pic
+	}()
+
+	return ch
+}
+
+func loadAsync(done <-chan interface{}, src []string) <-chan (<-chan image.Image) {
 	ch := make(chan (<-chan image.Image), 4) // load in 4-para
 
 	go func() {
 		defer close(ch)
-		for i, p := range src {
+		for i, s := range src {
 			loadch := make(chan image.Image, 1)
 
-			go func(idx int, pic image.Image) {
+			go func(idx int, url string) {
 				defer close(loadch)
-				if pic != nil {
-					loadch <- pic
-					return
-				}
-				// TODO: load from URL
-				duration := 1000 * time.Hour
 				select {
-				case <-time.After(duration):
-					// loaded
-					loadch <- &image.Uniform{color.White}
+				case pic, ok := <-urlAsync(url):
+					if ok {
+						// loaded
+						loadch <- pic
+					}
 				case <-done:
 					//log.Println("canceled loading:", idx)
 					return
 				}
-			}(i, p)
+			}(i, s)
 
 			select {
 			case ch <- loadch:
