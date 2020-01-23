@@ -1,4 +1,4 @@
-module github.com/ysh86/SlideShow
+module github.com/ysh86/slideShow
 
 go 1.13
 

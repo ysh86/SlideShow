@@ -13,6 +13,8 @@ import (
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
 	"golang.org/x/mobile/event/size"
+
+	"github.com/ysh86/slideShow"
 )
 
 // Default window size
@@ -38,7 +40,7 @@ func main() {
 	}
 
 	// src images
-	loader, err := NewAsyncLoader()
+	loader, err := slideShow.NewAsyncLoader()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,7 +48,7 @@ func main() {
 	log.Println("Start loader")
 
 	// renderer
-	renderer, err := NewNoEffectRenderer()
+	renderer, err := slideShow.NewNoEffectRenderer()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -102,7 +104,7 @@ func main() {
 
 			case paint.Event:
 				select {
-				case cur, ok := <-loader.cur:
+				case cur, ok := <-loader.Cur:
 					if ok {
 						renderer.Render(cur)
 					} else {
