@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"os"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
@@ -29,8 +30,28 @@ var backGroundColor = color.Gray{32}
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
-	// feed
-	src := []string{
+	// parse pages
+	feed, _ := slideShow.NewFeed()
+	urls := os.Args[1:]
+	var pages []*slideShow.Page
+	for _,u := range urls {
+		pages = append(pages, &slideShow.Page{URL: u})
+	}
+	errc := feed.ParsePagesAsync(pages)
+	select {
+	case err := <-errc:
+		if err != nil {
+			panic(err)
+		}
+	}
+	// image URLs
+	var src []string
+	for _, image := range feed.Images {
+		//fmt.Printf("  i%d: %v, %v, %v\n", i, image.Title, image.ThumbnailURL, image.URL)
+		src = append(src, image.URL)
+	}
+	/*
+	src = []string{
 		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
 		"0",
 		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
@@ -38,6 +59,7 @@ func main() {
 		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
 		"1",
 	}
+	*/
 
 	// src images
 	loader, err := slideShow.NewAsyncLoader()
