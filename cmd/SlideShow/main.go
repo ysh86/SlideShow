@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"image"
 	"image/color"
 	"log"
 	"os"
+	"strings"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
@@ -31,12 +33,27 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
 	// parse pages
-	feed, _ := slideShow.NewFeed()
-	urls := os.Args[1:]
 	var pages []*slideShow.Page
-	for _,u := range urls {
-		pages = append(pages, &slideShow.Page{URL: u})
+	if len(os.Args) == 1 {
+		// pipe
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			elms := strings.Split(scanner.Text(), ",")
+			//fmt.Printf("%#v\n", elms)
+			if len(elms) >= 2 {
+				u := strings.Trim(elms[len(elms)-1], " ")
+				t := strings.Trim(elms[len(elms)-2], " ")
+				pages = append(pages, &slideShow.Page{URL: u, Title: t})
+			}
+		}
+	} else {
+		// args
+		urls := os.Args[1:]
+		for _, u := range urls {
+			pages = append(pages, &slideShow.Page{URL: u})
+		}
 	}
+	feed, _ := slideShow.NewFeed()
 	errc := feed.ParsePagesAsync(pages)
 	select {
 	case err := <-errc:
@@ -51,15 +68,19 @@ func main() {
 		src = append(src, image.URL)
 	}
 	/*
-	src = []string{
-		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
-		"0",
-		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
-		"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
-		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
-		"1",
-	}
+		src = []string{
+			"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+			"0",
+			"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
+			"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+			"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
+			"1",
+		}
 	*/
+	if len(src) == 0 {
+		log.Println("No images")
+		return
+	}
 
 	// src images
 	loader, err := slideShow.NewAsyncLoader()
