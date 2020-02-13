@@ -1,4 +1,4 @@
-package main
+package slideShow
 
 import (
 	"image"
@@ -18,25 +18,18 @@ import (
 )
 
 type asyncLoader struct {
-	cur chan image.Image
+	Cur chan image.Image
 
 	src []string
 }
 
 func NewAsyncLoader() (*asyncLoader, error) {
 	cur := make(chan image.Image, 1)
-	return &asyncLoader{cur: cur}, nil
+	return &asyncLoader{Cur: cur}, nil
 }
 
-func (l *asyncLoader) SetList() {
-	l.src = []string{
-		"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
-		"0",
-		"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
-		"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
-		"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
-		"1",
-	}
+func (l *asyncLoader) SetList(src []string) {
+	l.src = src
 }
 
 func urlAsync(url string) <-chan image.Image {
@@ -141,7 +134,7 @@ func (l *asyncLoader) Run(done <-chan interface{}, w screen.Window) {
 			timeout = 1 * time.Second
 		retryPaint:
 			select {
-			case l.cur <- next:
+			case l.Cur <- next:
 			case <-time.After(timeout):
 				// paint Q is full?
 				goto retryPaint

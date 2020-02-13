@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"image"
 	"image/color"
 	"log"
+	"os"
+	"strings"
 
 	"golang.org/x/exp/shiny/driver"
 	"golang.org/x/exp/shiny/screen"
@@ -13,6 +16,8 @@ import (
 	"golang.org/x/mobile/event/lifecycle"
 	"golang.org/x/mobile/event/paint"
 	"golang.org/x/mobile/event/size"
+
+	"github.com/ysh86/slideShow"
 )
 
 // Default window size
@@ -27,16 +32,66 @@ var backGroundColor = color.Gray{32}
 func main() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.Lshortfile)
 
+	// parse pages
+	var pages []*slideShow.Page
+	if len(os.Args) == 1 {
+		// pipe
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			elms := strings.Split(scanner.Text(), ",")
+			//fmt.Printf("%#v\n", elms)
+			if len(elms) >= 2 {
+				u := strings.Trim(elms[len(elms)-1], " ")
+				t := strings.Trim(elms[len(elms)-2], " ")
+				pages = append(pages, &slideShow.Page{URL: u, Title: t})
+			}
+		}
+	} else {
+		// args
+		urls := os.Args[1:]
+		for _, u := range urls {
+			pages = append(pages, &slideShow.Page{URL: u})
+		}
+	}
+	feed, _ := slideShow.NewFeed()
+	errc := feed.ParsePagesAsync(pages)
+	select {
+	case err := <-errc:
+		if err != nil {
+			panic(err)
+		}
+	}
+	// image URLs
+	var src []string
+	for _, image := range feed.Images {
+		//fmt.Printf("  i%d: %v, %v, %v\n", i, image.Title, image.ThumbnailURL, image.URL)
+		src = append(src, image.URL)
+	}
+	/*
+		src = []string{
+			"https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+			"0",
+			"https://upload.wikimedia.org/wikipedia/commons/6/6b/Phalaenopsis_JPEG.jpg",
+			"https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+			"https://upload.wikimedia.org/wikipedia/commons/b/b2/Vulphere_WebP_OTAGROOVE_demonstration_2.webp",
+			"1",
+		}
+	*/
+	if len(src) == 0 {
+		log.Println("No images")
+		return
+	}
+
 	// src images
-	loader, err := NewAsyncLoader()
+	loader, err := slideShow.NewAsyncLoader()
 	if err != nil {
 		log.Fatal(err)
 	}
-	loader.SetList()
+	loader.SetList(src)
 	log.Println("Start loader")
 
 	// renderer
-	renderer, err := NewNoEffectRenderer()
+	renderer, err := slideShow.NewNoEffectRenderer()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -92,7 +147,7 @@ func main() {
 
 			case paint.Event:
 				select {
-				case cur, ok := <-loader.cur:
+				case cur, ok := <-loader.Cur:
 					if ok {
 						renderer.Render(cur)
 					} else {
